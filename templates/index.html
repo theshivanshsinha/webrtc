@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebRTC Video Stream</title>
+  </head>
+  <body>
+    <h1>WebRTC Video Stream</h1>
+    <video id="localVideo" autoplay playsinline></video>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+      const socket = io();
+
+      const localVideo = document.getElementById("localVideo");
+
+      // WebRTC Configuration
+      const configuration = {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      };
+      let peerConnection = new RTCPeerConnection(configuration);
+
+      // Get User Media
+      navigator.mediaDevices
+        .getUserMedia({ video: true, audio: false })
+        .then((stream) => {
+          localVideo.srcObject = stream;
+          stream
+            .getTracks()
+            .forEach((track) => peerConnection.addTrack(track, stream));
+        })
+        .catch((error) =>
+          console.error("Error accessing media devices.", error)
+        );
+
+      // Handle ICE Candidates
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("candidate", event.candidate);
+        }
+      };
+
+      // Handle ICE Candidate from Server
+      socket.on("candidate", (candidate) => {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+
+      // Handle SDP Offer from Server
+      socket.on("offer", async (offer) => {
+        await peerConnection.setRemoteDescription(
+          new RTCSessionDescription(offer)
+        );
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit("answer", answer);
+      });
+
+      // Create SDP Offer
+      async function createOffer() {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.emit("offer", offer);
+      }
+
+      createOffer();
+    </script>
+  </body>
+</html>
